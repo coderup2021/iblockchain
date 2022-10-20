@@ -1,5 +1,4 @@
 import CliTable from "cli-table";
-import { Block } from "./blockchain";
 
 export const tableLog = (data: any[] | any) => {
   if (!(data instanceof Array)) {

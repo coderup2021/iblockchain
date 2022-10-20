@@ -21,10 +21,15 @@ type MineAward = number;
 export interface Block {
   index: Index;
   timestamp: number;
-  data: any;
+  data: Trans[] | string;
   hash: string;
   prevHash: string;
   nonce: number;
+}
+export interface Trans {
+  from: Index | string;
+  to: Index | string;
+  amount: number;
 }
 
 //创世区块
@@ -39,7 +44,7 @@ const initBlock: Block = {
 
 class BlockChain {
   blocks: Block[];
-  data: any[];
+  data: Trans[];
   difficulty: number;
   fixedStr: string;
   mineAward: MineAward;
@@ -57,12 +62,35 @@ class BlockChain {
   }
 
   transfer(from: Index, to: Index, amount: number) {
+    if (from !== 0) {
+      const balance = this.balance(from);
+      if (balance < amount) {
+        console.error("not enough balance", from, amount, to);
+        return;
+      }
+    }
     const transObj = { from, to, amount };
     this.data.push(transObj);
     return transObj;
   }
 
-  balance() {}
+  balance(address: Index) {
+    let balance = 0;
+    this.blocks.forEach((block) => {
+      if (Array.isArray(block.data)) {
+        (block.data as Trans[]).forEach((trans: Trans) => {
+          if (address === trans.from) {
+            balance -= trans.amount;
+          }
+          if (address === trans.to) {
+            balance += trans.amount;
+          }
+        });
+      }
+    });
+    return balance;
+  }
+
   //挖矿
   mine(address: number) {
     this.transfer(0, address, this.mineAward);
