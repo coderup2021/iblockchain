@@ -1,4 +1,5 @@
 import * as Crypto from "crypto-js";
+import * as dgram from "dgram";
 //1. 迷你区块链
 //2. 区块链的生成，新增， 校验
 //3. 交易
@@ -41,6 +42,16 @@ const initBlock: Block = {
   nonce: 125,
   hash: "00f1897276079e9f470b69a816e8205995522cb235dcef6fad02c16adf7b423d",
 };
+//节点
+interface NetNode {
+  address: string;
+  port: number;
+}
+//节点之间传递的数据格式
+interface Action {
+  type: string;
+  data?: {};
+}
 
 class BlockChain {
   blocks: Block[];
@@ -48,12 +59,73 @@ class BlockChain {
   difficulty: number;
   fixedStr: string;
   mineAward: MineAward;
+  peers: [];
+  seed: NetNode;
+  udp: dgram.Socket;
+
   constructor() {
     this.blocks = [initBlock];
     this.data = [];
     this.difficulty = 4;
     this.fixedStr = "0";
     this.mineAward = 100;
+    this.peers = [];
+    this.seed = {
+      address: "140.238.59.75",
+      port: 8001,
+    };
+    this.udp = dgram.createSocket("udp4");
+    this.initUDP();
+  }
+
+  initUDP() {
+    this.bindP2P();
+    this.bindExit();
+  }
+  bindP2P() {
+    this.udp.on("message", (data, remote) => {
+      const { address, port } = remote;
+      const action: Action = JSON.parse(data.toString());
+      if (action.type) {
+        this.dispatch(action, remote);
+      }
+    });
+    this.udp.on("listening", () => {
+      console.log(`udp listening on ${this.udp.address().port}`);
+    });
+    //区分种子节点和普通节点， 普通端口使用端口0即可，服务端接口必须为8001
+    console.log("process.argv[2]", process.argv[2]);
+    const port = Number(process.argv[2] || 0);
+    this.startNode(port);
+  }
+  startNode(port: number) {
+    this.udp.bind(port);
+    if (port !== 8001) {
+      this.send(
+        {
+          type: "newpeer",
+        },
+        this.seed
+      );
+    }
+  }
+  send(message: Action, remote: NetNode) {
+    const { address, port } = remote;
+    this.udp.send(JSON.stringify(message), port, address);
+  }
+  bindExit() {
+    process.on("exit", () => {
+      console.log(">>>>>>>>byebye");
+    });
+  }
+  dispatch(action: Action, remote: NetNode) {
+    switch (action.type) {
+      case "newpeer":
+        console.log("hello, new friend");
+        break;
+      default:
+        console.log("unknown action type");
+    }
   }
 
   //获取最后一个区块
