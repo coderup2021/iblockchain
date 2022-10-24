@@ -44,4 +44,13 @@ vorpal.command("balance <address>", "查询余额").action(function (args) {
   return Promise.resolve();
 });
 
-vorpal.delimiter("coderup").show();
+vorpal.command("nodes", "查看节点网络信息").action(function (args) {
+  jsonLog(blockChain.peers);
+  return Promise.resolve();
+});
+vorpal.command("seed", "查看种子节点网络信息").action(function (args) {
+  jsonLog(blockChain.seed);
+  return Promise.resolve();
+});
+
+vorpal.delimiter("coderup >:").show();

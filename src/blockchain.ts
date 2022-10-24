@@ -59,9 +59,10 @@ class BlockChain {
   difficulty: number;
   fixedStr: string;
   mineAward: MineAward;
-  peers: [];
+  peers: NetNode[];
   seed: NetNode;
   udp: dgram.Socket;
+  remote: NetNode | null;
 
   constructor() {
     this.blocks = [initBlock];
@@ -74,6 +75,7 @@ class BlockChain {
       address: "140.238.59.75",
       port: 8001,
     };
+    this.remote = null;
     this.udp = dgram.createSocket("udp4");
     this.initUDP();
   }
@@ -119,13 +121,56 @@ class BlockChain {
     });
   }
   dispatch(action: Action, remote: NetNode) {
+    console.log(JSON.stringify(action));
     switch (action.type) {
       case "newpeer":
         console.log("hello, new friend");
+        //种子节点需要做的事情
+        //1.你的公网IP和Port
+        this.send({ type: "remoteAddress", data: this.seed }, remote);
+        //2.现在全部节点的列表
+        this.send({ type: "peerList", data: this.peers }, remote);
+        //3.告诉所有已知节点，来了个新朋友，快打招呼
+        this.broadcast({ type: "sayHi", data: remote });
+        //4.告诉你现在区块链的数据
+        this.peers.push(remote);
+        break;
+      case "remoteAddress":
+        this.remote = action.data as NetNode;
+        break;
+      case "peerList":
+        const newPeers = action.data;
+        this.addPeers(newPeers as NetNode[]);
+        break;
+      case "sayHi":
+        const remoteAddress = action.data as NetNode;
+        this.addPeers([remoteAddress]);
+        console.log("sayHi:新朋友你好，请你喝茶");
+        this.send({ type: "hi", data: "Hi" }, remoteAddress);
+        break;
+      case "hi":
+        console.log(`${remote.address}:${remote.port} :: ${action.data}`);
         break;
       default:
         console.log("unknown action type");
     }
+  }
+
+  broadcast(action: Action) {
+    this.peers.forEach((peer) => {
+      this.send(action, peer);
+    });
+  }
+  addPeers(peers: NetNode[]) {
+    peers.forEach((peer) => {
+      if (!this.peers.find((p) => this.isEqual(p, peer))) {
+        this.peers.push(peer);
+      }
+    });
+  }
+
+  isEqual(p1: NetNode, p2: NetNode) {
+    return p1.address === p2.address && p1.port === p2.port;
   }
 
   //获取最后一个区块
