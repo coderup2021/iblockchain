@@ -7,7 +7,7 @@
     "iblockchain": "bin/index.js"
   },
   "scripts": {
-    "start": "node ./bin/index.js",
+    "start": "npx ts-node ./src/command.ts",
     "server": "node ./src/server.js 8001",
     "deploy": "pm2 start ./src/server.js -- 8001",
     "lint": "eslint --fix --ext .js src ",

@@ -9,7 +9,7 @@ const getPub = (prv: string) => {
   return ec.keyFromPrivate(prv).getPublic("hex").toString();
 };
 
-export const generateKeys = () => {
+export const generateKeys: () => { prv: string; pub: string } = () => {
   try {
     let res = JSON.parse(fs.readFileSync(keyPath).toString());
     if (res.prv && res.pub && getPub(res.prv) === res.pub) {
@@ -28,11 +28,7 @@ export const generateKeys = () => {
     return res;
   }
 };
-const keys = generateKeys();
-
-interface TransExtra extends Trans {
-  signature: any;
-}
+export const keys = generateKeys();
 
 //签名
 export const sign = (trans: Trans) => {
@@ -46,7 +42,7 @@ export const sign = (trans: Trans) => {
 };
 
 //校验
-export const verify = (trans: TransExtra, pub: string) => {
+export const verify = (trans: Trans, pub: string) => {
   const { from, to, amount, signature } = trans;
   const keyPairTemp = ec.keyFromPublic(pub, "hex");
   const bufferMsg = `${from}-${to}-${amount}`;
@@ -54,12 +50,12 @@ export const verify = (trans: TransExtra, pub: string) => {
   return verifyOK;
 };
 
-const trans = { from: "woniu", to: "imooc", amount: 100 };
-const trans1 = { from: "woniu1", to: "imooc", amount: 100 };
-const signature = sign(trans);
-const transExtra: TransExtra = {
-  ...trans,
-  signature: signature,
-};
-const verifyOK = verify(transExtra, keys.pub);
-console.log("verifyOK", verifyOK);
+// const trans = { from: "woniu", to: "imooc", amount: 100 };
+// const trans1 = { from: "woniu1", to: "imooc", amount: 100 };
+// const signature = sign(trans);
+// const transExtra: Trans= {
+//   ...trans,
+//   signature: signature,
+// };
+// const verifyOK = verify(transExtra, keys.pub);
+// console.log("verifyOK", verifyOK);

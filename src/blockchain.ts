@@ -1,5 +1,6 @@
 import * as Crypto from "crypto-js";
 import * as dgram from "dgram";
+import { verify, sign, keys } from "./rsa";
 //1. 迷你区块链
 //2. 区块链的生成，新增， 校验
 //3. 交易
@@ -17,7 +18,7 @@ import * as dgram from "dgram";
 // }]
 //
 
-type Index = number;
+type Index = number | string;
 type MineAward = number;
 export interface Block {
   index: Index;
@@ -31,6 +32,7 @@ export interface Trans {
   from: Index | string;
   to: Index | string;
   amount: number;
+  signature?: string;
 }
 
 //创世区块
@@ -51,6 +53,9 @@ interface NetNode {
 interface Action {
   type: string;
   data?: {};
+}
+interface BlockData {
+  blocks: Block[];
 }
 
 class BlockChain {
@@ -110,6 +115,7 @@ class BlockChain {
         this.seed
       );
     }
+    this.addPeers([this.seed]);
   }
   send(message: Action, remote: NetNode) {
     const { address, port } = remote;
@@ -121,11 +127,13 @@ class BlockChain {
     });
   }
   dispatch(action: Action, remote: NetNode) {
-    console.log(JSON.stringify(action));
+    // console.log("接受到网络消息：", JSON.stringify(action));
     switch (action.type) {
       case "newpeer":
         console.log("hello, new friend");
         //种子节点需要做的事情
+        const { address, port } = remote;
+        this.peers.push({ address, port });
         //1.你的公网IP和Port
         this.send({ type: "remoteAddress", data: this.seed }, remote);
         //2.现在全部节点的列表
@@ -133,7 +141,15 @@ class BlockChain {
         //3.告诉所有已知节点，来了个新朋友，快打招呼
         this.broadcast({ type: "sayHi", data: remote });
         //4.告诉你现在区块链的数据
-        this.peers.push(remote);
+        this.send(
+          {
+            type: "blocks",
+            data: {
+              blocks: this.blocks,
+            },
+          },
+          remote
+        );
         break;
       case "remoteAddress":
         this.remote = action.data as NetNode;
@@ -142,11 +158,23 @@ class BlockChain {
         const newPeers = action.data;
         this.addPeers(newPeers as NetNode[]);
         break;
+      case "blocks":
+        const allData = action.data as BlockData;
+        const newBlocks = allData.blocks;
+        console.log("newBlocks", newBlocks);
+        this.replaceBlocks(newBlocks);
+        break;
       case "sayHi":
         const remoteAddress = action.data as NetNode;
-        this.addPeers([remoteAddress]);
         console.log("sayHi:新朋友你好，请你喝茶");
+        console.log("remoteAddress", remoteAddress);
         this.send({ type: "hi", data: "Hi" }, remoteAddress);
+        this.addPeers([
+          {
+            address: remoteAddress.address,
+            port: remoteAddress.port,
+          },
+        ]);
         break;
       case "hi":
         console.log(`${remote.address}:${remote.port} :: ${action.data}`);
@@ -157,6 +185,7 @@ class BlockChain {
   }
 
   broadcast(action: Action) {
+    console.log("action", action);
     this.peers.forEach((peer) => {
       this.send(action, peer);
     });
@@ -177,7 +206,6 @@ class BlockChain {
   getLastBlock() {
     return this.blocks[this.blocks.length - 1];
   }
-
   transfer(from: Index, to: Index, amount: number) {
     if (from !== 0) {
       const balance = this.balance(from);
@@ -186,7 +214,13 @@ class BlockChain {
         return;
       }
     }
-    const transObj = { from, to, amount };
+    const transObj = {
+      from,
+      to,
+      amount,
+      signature: sign({ from, to, amount }),
+    };
+
     this.data.push(transObj);
     return transObj;
   }
@@ -208,8 +242,15 @@ class BlockChain {
     return balance;
   }
 
+  isValidTransfer(trans: Trans) {
+    return verify(trans, keys.pub);
+  }
   //挖矿
-  mine(address: number) {
+  mine(address: string) {
+    if (!this.data.every((v) => this.isValidTransfer(v))) {
+      console.log(`非法交易`);
+      return;
+    }
     this.transfer(0, address, this.mineAward);
     const newBlock = this.generateNewBlock();
     let passChecked = true;
@@ -229,7 +270,7 @@ class BlockChain {
   }
 
   isValidBlock(block: Block, lastBlock = this.getLastBlock()) {
-    if (block.index !== lastBlock.index + 1) {
+    if (block.index !== (lastBlock.index as number) + 1) {
       return false;
     }
     if (block.timestamp <= lastBlock.timestamp) {
@@ -258,6 +299,15 @@ class BlockChain {
       return false;
     }
     return true;
+  }
+
+  replaceBlocks(newBlocks: Block[]) {
+    if (newBlocks.length === 1) return;
+    if (this.isValidChain(newBlocks) && newBlocks.length > this.blocks.length) {
+      this.blocks = JSON.parse(JSON.stringify(newBlocks));
+    } else {
+      console.log("[错误]：不合法的链");
+    }
   }
 
   getFixed() {
