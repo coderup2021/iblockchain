@@ -27,12 +27,12 @@ vorpal.command("trans <to> <amount>", "转账").action(((args) => {
 
 vorpal.command("detail <index>", "查看区块详情").action(function (args) {
   const block = blockChain.blocks[args.index];
-  jsonLog(block);
+  tableLog(block);
   return Promise.resolve();
 });
 
-vorpal.command("data", "查看Data").action(function (args) {
-  jsonLog(blockChain.data);
+vorpal.command("pending", "查看未打包的交易").action(function (args) {
+  tableLog(blockChain.data);
   return Promise.resolve();
 });
 

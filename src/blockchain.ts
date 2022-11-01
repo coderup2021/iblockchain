@@ -32,6 +32,7 @@ export interface Trans {
   from: Index | string;
   to: Index | string;
   amount: number;
+  ts: number;
   signature?: string;
 }
 
@@ -56,6 +57,7 @@ interface Action {
 }
 interface BlockData {
   blocks: Block[];
+  trans: Trans[];
 }
 
 class BlockChain {
@@ -101,7 +103,6 @@ class BlockChain {
       console.log(`udp listening on ${this.udp.address().port}`);
     });
     //区分种子节点和普通节点， 普通端口使用端口0即可，服务端接口必须为8001
-    console.log("process.argv[2]", process.argv[2]);
     const port = Number(process.argv[2] || 0);
     this.startNode(port);
   }
@@ -140,12 +141,13 @@ class BlockChain {
         this.send({ type: "peerList", data: this.peers }, remote);
         //3.告诉所有已知节点，来了个新朋友，快打招呼
         this.broadcast({ type: "sayHi", data: remote });
-        //4.告诉你现在区块链的数据
+        //4.告诉你现在区块链的区块数据和交易数据
         this.send(
           {
-            type: "blocks",
+            type: "blockchain",
             data: {
               blocks: this.blocks,
+              trans: this.data,
             },
           },
           remote
@@ -158,16 +160,40 @@ class BlockChain {
         const newPeers = action.data;
         this.addPeers(newPeers as NetNode[]);
         break;
-      case "blocks":
+      case "blockchain":
         const allData = action.data as BlockData;
         const newBlocks = allData.blocks;
-        console.log("newBlocks", newBlocks);
+        const newTrans = allData.trans;
         this.replaceBlocks(newBlocks);
+        this.replaceTrans(newTrans);
+        break;
+      case "trans":
+        const newTransfer = action.data as Trans;
+        if (this.existTransfer(newTransfer)) {
+          return;
+        }
+        console.log("[信息] 有新的交易，请注意查收");
+        this.addTrans(newTransfer);
+        this.broadcast(action);
+        break;
+      case "mine":
+        const lastBlock = this.getLastBlock();
+        const newBlock1 = action.data as Block;
+        if (lastBlock.hash === newBlock1.hash) {
+          return;
+        }
+        if (this.isValidBlock(newBlock1, lastBlock)) {
+          console.log("[信息] 有朋友挖矿成功，让我门为他喝彩");
+          this.blocks.push(newBlock1);
+          this.data = [];
+          this.broadcast(action);
+        } else {
+          console.log("挖矿的区块不合法");
+        }
         break;
       case "sayHi":
         const remoteAddress = action.data as NetNode;
         console.log("sayHi:新朋友你好，请你喝茶");
-        console.log("remoteAddress", remoteAddress);
         this.send({ type: "hi", data: "Hi" }, remoteAddress);
         this.addPeers([
           {
@@ -183,23 +209,34 @@ class BlockChain {
         console.log("unknown action type");
     }
   }
+  addTrans(newTransfer: Trans) {
+    if (this.isValidTransfer(newTransfer)) {
+      this.data.push(newTransfer);
+    }
+  }
+  isEqualObj(o1: {}, o2: {}) {
+    const keys1 = Object.keys(o1);
+    const keys2 = Object.keys(o2);
+    if (keys1.length !== keys2.length) return false;
+    return (
+      keys1.every((k) => o1[k] === o2[k]) && keys2.every((k) => o2[k] === o1[k])
+    );
+  }
+  existTransfer(transfer: Trans) {
+    return !!this.data.find((t) => this.isEqualObj(transfer, t));
+  }
 
   broadcast(action: Action) {
-    console.log("action", action);
     this.peers.forEach((peer) => {
       this.send(action, peer);
     });
   }
   addPeers(peers: NetNode[]) {
     peers.forEach((peer) => {
-      if (!this.peers.find((p) => this.isEqual(p, peer))) {
+      if (!this.peers.find((p) => this.isEqualObj(p, peer))) {
         this.peers.push(peer);
       }
     });
-  }
-
-  isEqual(p1: NetNode, p2: NetNode) {
-    return p1.address === p2.address && p1.port === p2.port;
   }
 
   //获取最后一个区块
@@ -207,21 +244,27 @@ class BlockChain {
     return this.blocks[this.blocks.length - 1];
   }
   transfer(from: Index, to: Index, amount: number) {
+    const ts = new Date().getTime();
+    const transObj = {
+      from,
+      to,
+      amount,
+      ts,
+      signature: sign({ from, to, amount, ts }),
+    };
+
+    this.data.push(transObj);
     if (from !== 0) {
       const balance = this.balance(from);
       if (balance < amount) {
         console.error("not enough balance", from, amount, to);
         return;
       }
+      this.broadcast({
+        type: "trans",
+        data: transObj,
+      });
     }
-    const transObj = {
-      from,
-      to,
-      amount,
-      signature: sign({ from, to, amount }),
-    };
-
-    this.data.push(transObj);
     return transObj;
   }
 
@@ -243,7 +286,7 @@ class BlockChain {
   }
 
   isValidTransfer(trans: Trans) {
-    return verify(trans, keys.pub);
+    return verify(trans, trans.from as string);
   }
   //挖矿
   mine(address: string) {
@@ -266,6 +309,11 @@ class BlockChain {
       this.blocks.push(newBlock);
       this.data = [];
     }
+    console.log("[信息] 挖矿成功");
+    this.broadcast({
+      type: "mine",
+      data: newBlock,
+    });
     return newBlock;
   }
 
@@ -307,6 +355,12 @@ class BlockChain {
       this.blocks = JSON.parse(JSON.stringify(newBlocks));
     } else {
       console.log("[错误]：不合法的链");
+    }
+  }
+
+  replaceTrans(trans: Trans[]) {
+    if (trans.every((t) => this.isValidTransfer(t))) {
+      this.data = trans;
     }
   }
 

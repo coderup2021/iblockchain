@@ -32,8 +32,8 @@ export const keys = generateKeys();
 
 //签名
 export const sign = (trans: Trans) => {
-  const { from, to, amount } = trans;
-  const bufferMsg = `${from}-${to}-${amount}`;
+  const { from, to, amount, ts } = trans;
+  const bufferMsg = `${from}-${to}-${amount}-${ts}`;
   const keyPairTemp = ec.keyFromPrivate(keys.prv, "hex");
   const signature = Buffer.from(keyPairTemp.sign(bufferMsg).toDER()).toString(
     "hex"
@@ -43,9 +43,9 @@ export const sign = (trans: Trans) => {
 
 //校验
 export const verify = (trans: Trans, pub: string) => {
-  const { from, to, amount, signature } = trans;
+  const { from, to, amount, ts, signature } = trans;
   const keyPairTemp = ec.keyFromPublic(pub, "hex");
-  const bufferMsg = `${from}-${to}-${amount}`;
+  const bufferMsg = `${from}-${to}-${amount}-${ts}`;
   const verifyOK = keyPairTemp.verify(bufferMsg, signature);
   return verifyOK;
 };
